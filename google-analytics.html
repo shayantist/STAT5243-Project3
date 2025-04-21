@@ -4,5 +4,18 @@
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-  gtag('config', 'G-F7JMFWEL90');
+
+  // Determine A/B group from URL or fallback
+  const urlParams = new URLSearchParams(window.location.search);
+  const group = urlParams.get('version') || urlParams.get('group') || (Math.random() < 0.5 ? 'A' : 'B');
+
+  // Map the custom dimension
+  gtag('config', 'G-F7JMFWEL90', {
+    'custom_map': { 'dimension1': 'ab_group' }
+  });
+
+  // Send A/B group assignment as event + parameter
+  gtag('event', 'ab_test_assignment', {
+    'ab_group': group
+  });
 </script>
