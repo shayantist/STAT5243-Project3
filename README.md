@@ -6,7 +6,7 @@ As per the assignment instructions, we have also implemented an A/B testing fram
 - **Version A**: Traditional, less fancy UI with simple list view (directly accessible at [https://shayantist.shinyapps.io/stat5243-project3/?group=A](https://shayantist.shinyapps.io/stat5243-project3/?group=A))
 - **Version B**: More modern, interactive UI with an **LLM-powered AI chatbot assistant** using Google's Gemini 1.5 Flash (via Google AI Studio API) (directly accessible at [https://shayantist.shinyapps.io/stat5243-project3/?group=B](https://shayantist.shinyapps.io/stat5243-project3/?group=B))
 
-As per the assignment instructions, the application tracks user interactions through Google Analytics, allowing for statistical analysis of user behavior and preference between the two designs.
+To test user engagement between the two versions, as suggested in the assignment, we also implemented a basic A/B testing framework using [Google Analytics](https://analytics.google.com/analytics/web/), allowing for statistical analysis of user behavior and preference between the two designs.
 
 ## Features
 ### Core Functionality (Both Versions)
