@@ -1,11 +1,10 @@
-# CampusConnect: Event Discovery A/B Testing Platform
+# CampusConnect: Discover Events on Campus
 
-This repository contains an R Shiny web application for event discovery on university campuses, developed by Team 11 (Shayan Chowdhury, Ran Yen, Zijun Fu, and Tiantian Li) for Prof. Alex Pijyan's STAT5243 Applied Data Science course in Spring 2025. 
+This repository contains an R Shiny web application for event discovery on university campuses (specifically Columbia for now), developed by Team 11 (Shayan Chowdhury, Ran Yen, Zijun Fu, and Tiantian Li) for Prof. Alex Pijyan's STAT5243 Applied Data Science course in Spring 2025. Test it out at [https://shayantist.shinyapps.io/stat5243-project3/](https://shayantist.shinyapps.io/stat5243-project3/)!
 
-## Project Overview
-This project implements an A/B testing framework to evaluate two different UI approaches for a campus event discovery platform:
-- **Version A**: Traditional, less fancy UI with simple list view
-- **Version B**: Modern, interactive UI with an LLM-powered AI chatbot assistant using Google's Gemini 1.5 Flash (via Google AI Studio API)
+As per the assignment instructions, we have also implemented an A/B testing framework to evaluate two different UI approaches for a campus event discovery platform:
+- **Version A**: Traditional, less fancy UI with simple list view (directly accessible at [https://shayantist.shinyapps.io/stat5243-project3/?group=A](https://shayantist.shinyapps.io/stat5243-project3/?group=A))
+- **Version B**: More modern, interactive UI with an **LLM-powered AI chatbot assistant** using Google's Gemini 1.5 Flash (via Google AI Studio API) (directly accessible at [https://shayantist.shinyapps.io/stat5243-project3/?group=B](https://shayantist.shinyapps.io/stat5243-project3/?group=B))
 
 As per the assignment instructions, the application tracks user interactions through Google Analytics, allowing for statistical analysis of user behavior and preference between the two designs.
 
@@ -26,8 +25,8 @@ As per the assignment instructions, the application tracks user interactions thr
 - Vibrant gradient color scheme with animated elements
 - Card-based event display with enhanced visual hierarchy
 - Quick-filter category badges for one-click filtering
-- "EventGuide" AI chatbot assistant powered by Google's Gemini 1.5 Flash
-- Personalized event suggestions via AI assistant
+- **THE REAL STAR OF THE SHOW**: "EventGuide" AI chatbot assistant powered by Google's Gemini 1.5 Flash
+- Personalized event suggestions via AI assistant (based on user's calendar events)
 
 ### Analytics Implementation
 The application tracks several key metrics to compare the effectiveness of each interface:
@@ -82,8 +81,8 @@ The application tracks several key metrics to compare the effectiveness of each 
 
 ### A/B Testing Configuration
 By default, users are randomly assigned to either Version A or Version B. To force a specific version for testing, use URL parameters:
-- Version A: `http://localhost:xxxx/?version=A`
-- Version B: `http://localhost:xxxx/?version=B`
+- Version A: `http://localhost:xxxx/?group=A`
+- Version B: `http://localhost:xxxx/?group=B`
 
 ## Data Collection and Analysis
 ### Event Data
