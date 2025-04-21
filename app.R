@@ -206,7 +206,7 @@ body { font-family: 'Poppins', sans-serif; background-color: #f8f9fa; } h1, h4 {
 .form-control { height: 34px; }
 "
 
-header_title <- "CampusConnect"
+header_title <- "👑 CampusConnect"
 header_subtitle <- "Discover events on campus at Columbia! (NOTE: All fictional—for now!)"
 header_authors <- "Project 3 by Team 11: Shayan Chowdhury (sc4040), Ran Yan (ry2487), Zijun Fu (zf2342), and Tiantian Li (tl3404)"
 footer_text <- "© 2025 CampusConnect | STAT 5243: Team 11 (Spring 2025)"
@@ -580,26 +580,27 @@ server <- function(input, output, session) {
     # Get relevant events to provide to the chatbot
     relevant_events <- event_data
     
-    # If the user message contains category keywords, filter events
-    categories <- sapply(event_categories[-1], function(cat) {
-      if (grepl(tolower(cat), tolower(user_msg))) {
-        return(TRUE)
-      }
-      return(FALSE)
-    })
+    # TODO: implement a better way to filter events based on the user's message
+    # # If the user message contains category keywords, filter events
+    # categories <- sapply(event_categories[-1], function(cat) {
+    #   if (grepl(tolower(cat), tolower(user_msg))) {
+    #     return(TRUE)
+    #   }
+    #   return(FALSE)
+    # })
     
-    # If categories are found in the message, filter events
-    if (any(categories)) {
-      filtered_categories <- event_categories[-1][categories]
-      relevant_events <- event_data %>% filter(category %in% filtered_categories)
-    }
+    # # If categories are found in the message, filter events
+    # if (any(categories)) {
+    #   filtered_categories <- event_categories[-1][categories]
+    #   relevant_events <- event_data %>% filter(category %in% filtered_categories)
+    # }
     
-    # If we have too many events, limit to most recent ones
-    if (nrow(relevant_events) > 10) {
-      relevant_events <- relevant_events %>% 
-        arrange(date) %>%
-        head(10)
-    }
+    # # If we have too many events, limit to most recent ones
+    # if (nrow(relevant_events) > 10) {
+    #   relevant_events <- relevant_events %>% 
+    #     arrange(date) %>%
+    #     head(10)
+    # }
     
     context <- paste0(chatbot_sys_prompt,
       "Here are some events that might be relevant to the user's query:\n\n",
