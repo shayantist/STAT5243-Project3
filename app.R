@@ -76,11 +76,57 @@ prepare_events_for_chatbot <- function(events) {
   }
   return(events_text)
 }
+# --- Google Analytics JS Snippet ---
+# GA4 gtag.js
+ga_script <- sprintf(
+  "<!-- Google tag (gtag.js) -->
+  <script async src='https://www.googletagmanager.com/gtag/js?id=%s'></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){{dataLayer.push(arguments);}}
+    gtag('js', new Date());
+    
+    gtag('config', '%s'); 
+  </script>",
+  GA_TRACKING_ID,
+  GA_TRACKING_ID
+)
 
 # Function to track events with Google Analytics
-track_event <- function(category, action, label = NULL, value = NULL) {
-  print(paste("GA Event:", category, action, ifelse(is.null(label), "", label), ifelse(is.null(value), "", value)))
-  # In production, replace with actual GA call
+track_event <- function(category, action, label = NULL, value = NULL) {  
+  if (GA_TRACKING_ID == "") {
+    warning("GA_TRACKING_ID environment variable not set")
+    return()
+  }
+  
+  # Prepare the event data
+  event_data <- list(
+    v = 1,                     # API Version
+    tid = GA_TRACKING_ID,      # Tracking ID / Property ID
+    t = "event",               # Hit Type
+    ec = category,             # Event Category
+    ea = action,               # Event Action
+    el = label,                # Event Label (optional)
+    ev = value                 # Event Value (optional)
+  )
+  
+  # Remove NULL values
+  event_data <- event_data[!sapply(event_data, is.null)]
+  
+  # Send the event to Google Analytics
+  tryCatch({
+    httr::GET(
+      url = "https://www.google-analytics.com/collect",
+      query = event_data,
+      config = httr::config(connecttimeout = 1)
+    )
+    # Log the event for debugging
+    print(paste("GA Event sent:", category, action, 
+                ifelse(is.null(label), "", label), 
+                ifelse(is.null(value), "", value)))
+  }, error = function(e) {
+    warning(paste("Failed to send GA event:", e$message))
+  })
 }
 
 # Determine version (A or B) based on user ID or URL parameter
@@ -98,7 +144,7 @@ determine_version <- function(session) {
 source("event_data.R") # Imports event_data and event_categories
 
 #==============================================================================
-# UI DEFINITIONS (MINIMIZED)
+# FRONTEND UI
 #==============================================================================
 # CSS Styles for both versions
 common_css <- "
@@ -143,6 +189,7 @@ header_authors <- "Project 3 by Team 11: Shayan Chowdhury (sc4040), Ran Yan (ry2
 
 version_a_ui <- function() {
   fluidPage(
+    tags$head(tags$script(HTML(ga_script))), # Add Google Analytics tracking
     theme = shinytheme("flatly"),
     tags$head(tags$style(HTML(paste(common_css, version_a_css)))),
     div(class = "header", div(class = "container", h1(header_title), p(header_subtitle), p(header_authors))),
@@ -165,6 +212,7 @@ version_a_ui <- function() {
 # VERSION B UI: Modern / fancy interface + with AI chatbot using Google's Gemini Flash 1.5
 version_b_ui <- function() {
   fluidPage(
+    tags$head(tags$script(HTML(ga_script))), # Add Google Analytics tracking
     theme = shinytheme("cosmo"),
     tags$head(
       tags$style(HTML(paste(common_css, version_b_css))),
@@ -230,7 +278,7 @@ version_b_ui <- function() {
 }
 
 #==============================================================================
-# MAIN APP
+# MAIN APP (SERVER + UI)
 #==============================================================================
 ui <- function(request) {
   tagList(
