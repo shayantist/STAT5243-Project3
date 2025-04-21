@@ -15,13 +15,13 @@ load_dot_env()
 # Setup configurations
 GA_TRACKING_ID <- Sys.getenv("GA_TRACKING_ID")
 GEMINI_API_KEY <- Sys.getenv("GEMINI_API_KEY")
-
+GEMINI_MODEL <- "gemini-1.5-flash"
 #==============================================================================
 # HELPER FUNCTIONS
 #==============================================================================
 # Function to call Gemini API
 call_gemini <- function(prompt, api_key = GEMINI_API_KEY) {
-  url <- paste0("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=", api_key)
+  url <- paste0("https://generativelanguage.googleapis.com/v1beta/models/", GEMINI_MODEL, ":generateContent?key=", api_key)
   request_body <- list(
     contents = list(
       list(
@@ -29,7 +29,8 @@ call_gemini <- function(prompt, api_key = GEMINI_API_KEY) {
           list(text = prompt)
         )
       )
-    )
+    ),
+    generationConfig = list(temperature = 0.8)
   )
   response <- tryCatch({
     POST(
@@ -60,8 +61,26 @@ call_gemini <- function(prompt, api_key = GEMINI_API_KEY) {
   }
 }
 
-# Function to prepare event data for the chatbot
-prepare_events_for_chatbot <- function(events) {
+# Function to store user calendar (only in browser session, not persistent!!)
+# TODO: maybe make it persistent by storing in cookies or local storage?
+user_calendar <- reactiveValues(events = data.frame())
+
+# Function to add events to calendar
+add_event_to_calendar <- function(event_id, event_data) {
+  event <- event_data[event_data$id == event_id, ]
+  if (nrow(event) == 1) {
+    # Check if event is already in calendar
+    if (nrow(user_calendar$events) > 0 && event_id %in% user_calendar$events$id) {
+      return(FALSE)  # Event already exists
+    }
+    user_calendar$events <- rbind(user_calendar$events, event)
+    return(TRUE)
+  }
+  return(FALSE)
+}
+
+# Function to format events as a string
+format_events_to_string <- function(events) {
   events_text <- ""
   for (i in 1:nrow(events)) {
     event <- events[i, ]
@@ -125,8 +144,8 @@ determine_version <- function(session) {
 #==============================================================================
 # EVENT DATA
 #==============================================================================
-# Load event data and categories from external file
-source("event_data.R") # Imports event_data and event_categories
+# Load event_data and event_categories from external file
+source("event_data.R")
 
 #==============================================================================
 # FRONTEND UI
@@ -167,34 +186,46 @@ body { font-family: 'Poppins', sans-serif; background-color: #f8f9fa; }
 .event-image-placeholder { width: 100%; height: 180px; background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); display: flex; justify-content: center; align-items: center; color: #999; font-size: 12px; }
 "
 
-# VERSION A UI: Traditional / not as fancy interface
 header_title <- "CampusConnect"
 header_subtitle <- "Discover events on campus at Columbia! (NOTE: All fictional—for now!)"
 header_authors <- "Project 3 by Team 11: Shayan Chowdhury (sc4040), Ran Yan (ry2487), Zijun Fu (zf2342), and Tiantian Li (tl3404)"
+footer_text <- "© 2025 CampusConnect | STAT 5243: Team 11 (Spring 2025)"
+date_range_default <- c(Sys.Date() - 30, Sys.Date() + 60)
 
+# VERSION A UI: Traditional / not as fancy interface
 version_a_ui <- function() {
   fluidPage(
     tags$head(includeHTML("google-analytics.html")), # Add Google Analytics tracking
     theme = shinytheme("flatly"),
     tags$head(tags$style(HTML(paste(common_css, version_a_css)))),
-    div(class = "header", div(class = "container", h1(header_title), p(header_subtitle), p(header_authors))),
+    div(class = "header", div(class = "container", 
+        div(class = "row align-items-center",
+            div(class = "col-md-8", h1(header_title), p(header_subtitle), p(header_authors)),
+            div(class = "col-md-4 text-right", 
+                actionButton("view_calendar", "My Calendar", 
+                             class = "btn btn-primary", 
+                             icon = icon("calendar"))
+            )
+        ))),
     div(class = "container",
         div(class = "filter-section", fluidRow(
           column(3, div(style = "font-weight: bold", "Category"), 
                  selectizeInput("category_filter", NULL, choices = event_categories, selected = "All", multiple = TRUE, 
                                 options = list(placeholder = "Select categories"))),
-          column(5, div(style = "font-weight: bold", "Date Range"), dateRangeInput("date_range", NULL, start = Sys.Date(), end = Sys.Date() + 30)),
+          column(5, div(style = "font-weight: bold", "Date Range"), dateRangeInput("date_range", NULL, start = date_range_default[1], end = date_range_default[2])),
           column(4, div(style = "font-weight: bold", "Search"), textInput("search_text", NULL, placeholder = "Search events..."))
         )),
         h3("Upcoming Events", class = "mb-4"),
         fluidRow(id = "events_container", uiOutput("event_grid")),
-        div(style = "margin-top: 30px; padding: 20px 0; background-color: #f5f5f5; text-align: center;",
-            p("© 2025 CampusConnect | Columbia University"))
+        div(style = "margin-top: 30px; padding: 20px 0; background-color: #f5f5f5; text-align: center;", p(footer_text))
     )
   )
 }
 
 # VERSION B UI: Modern / fancy interface + with AI chatbot using Google's Gemini Flash 1.5
+popular_categories <- c("Computer Science", "Finance", "Dance", "Politics")
+chatbot_intro <- "Hi there! I'm EventGuide, a personal assistant for finding events at Columbia, powered by Google's Gemini 1.5 Flash LLM. What kinds of events interest you? Feel free to ask me anything in natural language."
+
 version_b_ui <- function() {
   fluidPage(
     tags$head(includeHTML("google-analytics.html")), # Add Google Analytics tracking
@@ -206,35 +237,35 @@ version_b_ui <- function() {
     ),
     div(class = "header", div(class = "container", div(class = "row align-items-center",
         div(class = "col-md-8", h1(header_title), p(header_subtitle), p(header_authors)),
-        div(class = "col-md-4 text-right", actionButton("suggest_event", "Get Personalized Suggestions", class = "btn-gradient"))
+        div(class = "col-md-4 text-right", 
+            actionButton("view_calendar", "My Calendar", class = "btn-gradient", icon = icon("calendar")),
+            actionButton("suggest_event", "🤖 AI Suggestions", class = "btn-gradient ml-2 mt-2")
+        )
     ))),
     div(class = "container",
         div(class = "search-container", fluidRow(
           column(3, div(style = "font-weight: 600", "I'm interested in"), 
-                 selectizeInput("category_filter", NULL, choices = event_categories, selected = "All", multiple = TRUE,
-                                options = list(placeholder = "Select categories"))),
-          column(5, div(style = "font-weight: 600", "When are you free?"), dateRangeInput("date_range", NULL, start = Sys.Date(), end = Sys.Date() + 30)),
+                 selectizeInput("category_filter", NULL, choices = event_categories, selected = "All", multiple = TRUE, options = list(placeholder = "Select categories"))),
+          column(5, div(style = "font-weight: 600", "When are you free?"), dateRangeInput("date_range", NULL, start = date_range_default[1], end = date_range_default[2])),
           column(4, div(style = "font-weight: 600", "Looking for something specific?"), textInput("search_text", NULL, placeholder = "Search events..."))
         )),
         div(style = "margin-bottom: 30px;",
             h4("Popular Categories", style = "margin-bottom: 15px;"),
             div(
-              actionLink("filter_cs", div(class = "badge-category", "Computer Science")),
-              actionLink("filter_finance", div(class = "badge-category", "Finance")),
-              actionLink("filter_arts", div(class = "badge-category", "Arts")),
-              actionLink("filter_music", div(class = "badge-category", "Music")),
-              actionLink("filter_politics", div(class = "badge-category", "Politics"))
+              lapply(popular_categories, function(category) {
+                actionLink(paste0("filter_", tolower(gsub(" ", "_", category))), 
+                           div(class = "badge-category", category))
+              })
             )
         ),
         h3("What's Happening On Campus", style = "font-weight: 600;"),
         div(id = "events_container", uiOutput("event_grid")),
-        div(style = "margin-top: 50px; padding: 30px 0; background-color: #f1f1f1; text-align: center; border-radius: 25px 25px 0 0;",
-            p("© 2025 CampusConnect | Columbia University"))
+        div(style = "margin-top: 50px; padding: 30px 0; background-color: #f1f1f1; text-align: center; border-radius: 25px 25px 0 0;", p(footer_text))
     ),
-    # Chatbot UI - Fixed so it doesn't overlap with the suggest button
+    # Chatbot UI
     div(id = "chat_toggle", class = "chat-toggle", icon("comments")),
     div(id = "chat_container", class = "chat-container chat-hidden",
-        div(class = "chat-header", span("EventGuide Assistant"), actionButton("minimize_chat", icon("minus"), class = "p-0 border-0")),
+        div(class = "chat-header", span("EventGuide LLM Chatbot"), actionButton("minimize_chat", icon("minus"), class = "p-0 border-0")),
         div(id = "chat_messages", class = "chat-messages", uiOutput("chat_display")),
         div(style="display: flex; padding: 10px; border-top: 1px solid #e0e0e0;",
             textInput("chat_input", NULL, placeholder = "Ask about events..."),
@@ -315,67 +346,20 @@ server <- function(input, output, session) {
   observeEvent(input$date_range, { track_event("Filter", "DateRange", paste(input$date_range[1], "to", input$date_range[2])) })
   observeEvent(input$search_text, { if (!is.null(input$search_text) && input$search_text != "") track_event("Filter", "Search", input$search_text) })
   
-  # Quick filters (Version B)
-  observeEvent(input$filter_cs, { 
-    # Get current selections
-    current <- input$category_filter
-    if ("All" %in% current) {
-      current <- c()
-    }
-    # Add Computer Science if not already selected
-    if (!("Computer Science" %in% current)) {
-      current <- c(current, "Computer Science")
-    }
-    updateSelectizeInput(session, "category_filter", selected = current)
-    track_event("QuickFilter", "Category", "Computer Science") 
-  })
-  
-  observeEvent(input$filter_finance, { 
-    current <- input$category_filter
-    if ("All" %in% current) {
-      current <- c()
-    }
-    if (!("Finance" %in% current)) {
-      current <- c(current, "Finance")
-    }
-    updateSelectizeInput(session, "category_filter", selected = current)
-    track_event("QuickFilter", "Category", "Finance") 
-  })
-  
-  observeEvent(input$filter_arts, { 
-    current <- input$category_filter
-    if ("All" %in% current) {
-      current <- c()
-    }
-    if (!("Arts" %in% current)) {
-      current <- c(current, "Arts")
-    }
-    updateSelectizeInput(session, "category_filter", selected = current)
-    track_event("QuickFilter", "Category", "Arts") 
-  })
-  
-  observeEvent(input$filter_music, { 
-    current <- input$category_filter
-    if ("All" %in% current) {
-      current <- c()
-    }
-    if (!("Music" %in% current)) {
-      current <- c(current, "Music")
-    }
-    updateSelectizeInput(session, "category_filter", selected = current)
-    track_event("QuickFilter", "Category", "Music") 
-  })
-  
-  observeEvent(input$filter_politics, { 
-    current <- input$category_filter
-    if ("All" %in% current) {
-      current <- c()
-    }
-    if (!("Politics" %in% current)) {
-      current <- c(current, "Politics")
-    }
-    updateSelectizeInput(session, "category_filter", selected = current)
-    track_event("QuickFilter", "Category", "Politics") 
+  # Quick filters (Version B) - dynamically create observers for each category
+  lapply(popular_categories, function(category) {
+    filter_id <- paste0("filter_", tolower(gsub(" ", "_", category)))
+    observeEvent(input[[filter_id]], {
+      current <- input$category_filter
+      if ("All" %in% current) {
+        current <- c()
+      }
+      if (!(category %in% current)) {
+        current <- c(category)
+      }
+      updateSelectizeInput(session, "category_filter", selected = current)
+      track_event("QuickFilter", "Category", category)
+    })
   })
   
   # Render UI based on version
@@ -395,7 +379,6 @@ server <- function(input, output, session) {
       event_boxes <- lapply(1:nrow(events), function(i) {
         event <- events[i, ]
         column(width = 4, div(class = "event-box",
-          # div(class = "event-image-placeholder", "Event Image"),
           # img(src = event$image_url, class = "event-image"), # TODO: Add actual images?
           div(class = "event-title", event$title),
           div(class = "event-detail", icon("calendar"), " ", format(event$date, "%b %d, %Y")),
@@ -415,7 +398,6 @@ server <- function(input, output, session) {
       event_boxes <- lapply(1:nrow(events), function(i) {
         event <- events[i, ]
         column(width = 4, div(class = "event-card",
-          # div(class = "event-image-placeholder", "Event Image"),
           # img(src = event$image_url, class = "event-image"), # TODO: Add actual images?
           div(style = "padding: 20px;",
             div(class = "badge-category", event$category),
@@ -484,9 +466,81 @@ server <- function(input, output, session) {
     event <- event_data[event_data$id == event_id, ]
     
     if (nrow(event) == 1) {
-      track_event("Conversion", "AddToCalendar", event$title, 1)
-      showNotification(paste("Added to calendar:", event$title), type = "default", duration = 5)
+      result <- add_event_to_calendar(event_id, event_data)
+      if (result) {
+        track_event("Conversion", "AddToCalendar", event$title, 1)
+        showNotification(paste("Added to calendar:", event$title), type = "message", duration = 5)
+      } else {
+        showNotification("This event is already in your calendar", type = "warning", duration = 3)
+      }
       removeModal()
+    }
+  })
+  
+  # View calendar action
+  observeEvent(input$view_calendar, {
+    track_event("Interaction", "ViewCalendar")
+    
+    if (nrow(user_calendar$events) == 0) {
+      calendar_content <- div(
+        style = "text-align: center; padding: 20px;",
+        icon("calendar-times", style = "font-size: 48px; color: #ccc;"),
+        h4("Your calendar is empty"),
+        p("Add events to see them here.")
+      )
+    } else {
+      # Sort events by date
+      calendar_events <- user_calendar$events %>% arrange(date)
+      
+      # Create event list
+      event_list <- lapply(1:nrow(calendar_events), function(i) {
+        event <- calendar_events[i, ]
+        div(
+          class = if(version() == "A") "event-box" else "event-card",
+          style = "margin-bottom: 15px; padding: 15px;",
+          div(class = "event-title", event$title),
+          div(class = "event-detail", icon("calendar"), " ", format(event$date, "%b %d, %Y")),
+          div(class = "event-detail", icon("clock"), " ", event$time),
+          div(class = "event-detail", icon("map-marker-alt"), " ", event$location),
+          actionButton(paste0("remove_calendar_", event$id), "Remove", 
+                       class = if(version() == "A") "btn-sm btn-outline-danger" else "btn-sm btn-outline",
+                       onclick = paste0("Shiny.setInputValue('remove_from_calendar', ", event$id, ");"))
+        )
+      })
+      
+      calendar_content <- div(
+        h4("Your Upcoming Events", style = "margin-bottom: 20px;"),
+        div(event_list)
+      )
+    }
+    
+    showModal(modalDialog(
+      title = "My Calendar",
+      calendar_content,
+      size = "m", easyClose = TRUE
+    ))
+  })
+  
+  # Remove from calendar action
+  observeEvent(input$remove_from_calendar, {
+    req(input$remove_from_calendar)
+    event_id <- input$remove_from_calendar
+    
+    if (nrow(user_calendar$events) > 0) {
+      event_to_remove <- user_calendar$events[user_calendar$events$id == event_id, ]
+      if (nrow(event_to_remove) > 0) {
+        user_calendar$events <- user_calendar$events[user_calendar$events$id != event_id, ]
+        track_event("Interaction", "RemoveFromCalendar", event_to_remove$title)
+        showNotification(paste("Removed from calendar:", event_to_remove$title), type = "default", duration = 3)
+        
+        # Refresh the calendar modal
+        removeModal()
+        delay(300, {
+          if(input$view_calendar > 0) {
+            runjs("$('#view_calendar').click();")
+          }
+        })
+      }
     }
   })
   
@@ -524,20 +578,23 @@ server <- function(input, output, session) {
         head(10)
     }
     
-    # Prepare events data for the chatbot
-    events_text <- prepare_events_for_chatbot(relevant_events)
-    
     context <- paste0(
       "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
       "Keep responses concise (2-3 sentences) and focus on helping users find events. ",
       "Here are some events that might be relevant to the user's query:\n\n",
-      events_text,
+      format_events_to_string(relevant_events),
       "\nUser question: ", user_msg
     )
     
-    # TODO: have some sort of loading indicator?
+    # TODO: have some sort of loading indicator in the chatbot box
+    showModal(modalDialog(
+      title = "Generating response...",
+      div(class = "spinner-border text-primary", role = "status"),
+      size = "m", easyClose = TRUE
+    ))
     response <- call_gemini(context)
-    
+    removeModal()
+
     chat_history$messages <- c(chat_history$messages, paste0("EventGuide: ", response))
     updateTextInput(session, "chat_input", value = "")
   })
@@ -546,8 +603,7 @@ server <- function(input, output, session) {
     req(version() == "B")
     
     if (length(chat_history$messages) == 0) {
-      return(div(div(p("Hi there! I'm EventGuide, your personal assistant for finding events at Columbia. What kinds of events interest you?"), 
-                      class = "chat-message bot-message")))
+      return(div(div(p(chatbot_intro), class = "chat-message bot-message")))
     } else {
       chat_elements <- lapply(chat_history$messages, function(msg) {
         if (startsWith(msg, "You: ")) {
@@ -560,30 +616,63 @@ server <- function(input, output, session) {
     }
   })
   
-  # Suggestion button (Version B)
+  # AI suggestions button (Version B)
   observeEvent(input$suggest_event, {
     req(version() == "B")
     track_event("Interaction", "RequestSuggestions")
     
-    # Get a list of upcoming events to suggest
-    upcoming_events <- event_data %>%
-      filter(date >= Sys.Date()) %>%
-      arrange(date) %>%
-      head(5)
+    # Get user's calendar events
+    calendar_events <- user_calendar$events
     
-    # Provide event data to the chatbot
-    events_text <- prepare_events_for_chatbot(upcoming_events)
+    if (nrow(calendar_events) > 0) {
+      # Get the categories of events in the calendar
+      calendar_categories <- unique(calendar_events$category)
+      
+      # Find events with similar categories, not already in calendar
+      suggested_events <- event_data %>%
+        filter(category %in% calendar_categories) %>%
+        filter(!id %in% calendar_events$id) %>%
+        filter(date >= Sys.Date()) %>%
+        arrange(date) %>%
+        head(5)
+      
+      # If no similar events found, get random events
+      if (nrow(suggested_events) == 0) {
+        suggested_events <- event_data %>%
+          filter(!id %in% calendar_events$id) %>%
+          filter(date >= Sys.Date()) %>%
+          sample_n(min(5, nrow(.)))
+      }
+      
+      # Context for recommendation based on calendar
+      context <- paste0(
+        "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
+        "The user has these events in their calendar: \n\n",
+        format_events_to_string(calendar_events),
+        "\n\nBased on their interests, recommend these similar events: \n\n",
+        format_events_to_string(suggested_events),
+        "\nExplain why these recommendations match their interests. Keep your response concise (3-4 sentences) and enthusiastic."
+      )
+    } else {
+      # If calendar is empty, recommend random upcoming events
+      suggested_events <- event_data %>%
+        filter(date >= Sys.Date()) %>%
+        arrange(date) %>%
+        head(5)
+      
+      # Context for recommendation with empty calendar
+      context <- paste0(
+        "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
+        "The user doesn't have any events in their calendar yet. Here are some events you can recommend: \n\n",
+        format_events_to_string(suggested_events),
+        "\nKeep your response concise (2-3 sentences) and enthusiastic, encouraging them to explore these events."
+      )
+    }
     
-    context <- paste0(
-      "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
-      "The user clicked on 'Get Personalized Suggestions'. Suggest they look at these upcoming events:\n\n",
-      events_text,
-      "\nKeep your response concise (2-3 sentences) and enthusiastic."
-    )
-    
-    # TODO: have some sort of loading indicator?
+    # Call Gemini for recommendations
     response <- call_gemini(context)
     
+    # Add recommendation to chat and open chat
     chat_history$messages <- c(chat_history$messages, paste0("EventGuide: ", response))
     runjs("$('#chat_container').removeClass('chat-hidden'); $('#chat_toggle').addClass('d-none');")
   })
