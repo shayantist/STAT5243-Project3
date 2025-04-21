@@ -76,21 +76,6 @@ prepare_events_for_chatbot <- function(events) {
   }
   return(events_text)
 }
-# --- Google Analytics JS Snippet ---
-# GA4 gtag.js
-ga_script <- sprintf(
-  "<!-- Google tag (gtag.js) -->
-  <script async src='https://www.googletagmanager.com/gtag/js?id=%s'></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){{dataLayer.push(arguments);}}
-    gtag('js', new Date());
-    
-    gtag('config', '%s'); 
-  </script>",
-  GA_TRACKING_ID,
-  GA_TRACKING_ID
-)
 
 # Function to track events with Google Analytics
 track_event <- function(category, action, label = NULL, value = NULL) {  
@@ -189,7 +174,7 @@ header_authors <- "Project 3 by Team 11: Shayan Chowdhury (sc4040), Ran Yan (ry2
 
 version_a_ui <- function() {
   fluidPage(
-    tags$head(tags$script(HTML(ga_script))), # Add Google Analytics tracking
+    tags$head(includeHTML("google-analytics.html")), # Add Google Analytics tracking
     theme = shinytheme("flatly"),
     tags$head(tags$style(HTML(paste(common_css, version_a_css)))),
     div(class = "header", div(class = "container", h1(header_title), p(header_subtitle), p(header_authors))),
@@ -212,7 +197,7 @@ version_a_ui <- function() {
 # VERSION B UI: Modern / fancy interface + with AI chatbot using Google's Gemini Flash 1.5
 version_b_ui <- function() {
   fluidPage(
-    tags$head(tags$script(HTML(ga_script))), # Add Google Analytics tracking
+    tags$head(includeHTML("google-analytics.html")), # Add Google Analytics tracking
     theme = shinytheme("cosmo"),
     tags$head(
       tags$style(HTML(paste(common_css, version_b_css))),
