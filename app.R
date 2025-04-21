@@ -1,5 +1,3 @@
-# CampusConnect: Event Discovery Platform A/B Test
-# Load libraries
 library(shiny)
 library(dplyr)
 library(shinythemes)
@@ -96,40 +94,61 @@ format_events_to_string <- function(events) {
   return(events_text)
 }
 
-# Function to track events with Google Analytics
-track_event <- function(category, action, label = NULL, value = NULL) {  
-  if (GA_TRACKING_ID == "") {
-    warning("GA_TRACKING_ID environment variable not set")
+# Function to track events with Google Analytics (GA4 using gtag.js via shinyjs)
+track_event <- function(category, action, label = NULL, value = NULL) {
+  # Although GA_TRACKING_ID isn't directly used in the gtag JS call here (it relies on the initial config),
+  # checking it ensures tracking is intended to be active.
+  if (Sys.getenv("GA_TRACKING_ID", "") == "") {
+    warning("GA_TRACKING_ID environment variable not set. GA event tracking disabled.")
     return()
   }
-  
-  # Prepare the event data
-  event_data <- list(
-    v = 1,                     # API Version
-    tid = GA_TRACKING_ID,      # Tracking ID / Property ID
-    t = "event",               # Hit Type
-    ec = category,             # Event Category
-    ea = action,               # Event Action
-    el = label,                # Event Label (optional)
-    ev = value                 # Event Value (optional)
-  )
-  
-  # Remove NULL values
-  event_data <- event_data[!sapply(event_data, is.null)]
-  
-  # Send the event to Google Analytics
+
+  # GA4 uses an event 'name' and 'parameters'.
+  # We'll map the old UA structure to the GA4 structure.
+  # 'action' seems like a good fit for the GA4 event 'name'.
+  # 'category', 'label', and 'value' will become parameters.
+  event_name <- action
+  event_params <- list()
+
+  # Add parameters if they are not NULL
+  if (!is.null(category)) {
+    event_params$event_category <- category
+  }
+  if (!is.null(label)) {
+    event_params$event_label <- label
+  }
+  if (!is.null(value)) {
+    # Ensure value is numeric for GA4 standard 'value' parameter
+    if(is.numeric(value)) {
+      event_params$value <- value
+    } else {
+       # If value is not numeric, send it as a custom parameter or label extension
+       event_params$event_value_detail <- as.character(value)
+       warning(paste("GA Event:", event_name, "- Non-numeric value provided. Sent as 'event_value_detail' parameter."))
+    }
+  }
+
+  # Convert the parameters list to a JSON string suitable for JavaScript
+  # Make sure single values are not treated as arrays
+  params_json <- jsonlite::toJSON(event_params, auto_unbox = TRUE)
+
+  # print(paste("GA4 Event:", event_name, "| Params:", params_json))
+
+  # Construct the JavaScript command
+  # Use single quotes inside the JS string for the event name
+  # Use the JSON string for the parameters object
+  js_command <- sprintf("if (typeof gtag === 'function') { gtag('event', '%s', %s); console.log('GA4 Event Triggered:', '%s', %s); } else { console.warn('gtag function not found. GA event not sent.'); }",
+                        gsub("'", "\\'", event_name, fixed = TRUE), # Escape single quotes in event name
+                        params_json,
+                        event_name,
+                        params_json)
+
+  # Use shinyjs to run the JavaScript command in the browser
   tryCatch({
-    httr::GET(
-      url = "https://www.google-analytics.com/collect",
-      query = event_data,
-      config = httr::config(connecttimeout = 1)
-    )
-    # Log the event for debugging
-    print(paste("GA Event sent:", category, action, 
-                ifelse(is.null(label), "", label), 
-                ifelse(is.null(value), "", value)))
+    shinyjs::runjs(js_command)
+    print(paste("GA4 Event Triggered:", event_name, "| Params:", params_json))
   }, error = function(e) {
-    warning(paste("Failed to send GA event:", e$message))
+    warning(paste("Failed to trigger GA4 event via shinyjs:", e$message))
   })
 }
 
@@ -168,11 +187,11 @@ body { font-family: sans-serif; }
 "
 
 version_b_css <- "
-body { font-family: 'Poppins', sans-serif; background-color: #f8f9fa; }
-.header { background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: white; padding: 25px 0; margin-bottom: 30px; }
+body { font-family: 'Poppins', sans-serif; background-color: #f8f9fa; } h1, h4 { font-weight: bold; }
+.header { background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: white; padding: 25px 0; margin-bottom: 15px; }
 .event-card { background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.08); margin-bottom: 25px; transition: all 0.3s ease; }
 .event-card:hover { transform: translateY(-10px); box-shadow: 0 15px 25px rgba(0,0,0,0.1); }
-.search-container { background-color: white; border-radius: 12px; padding: 20px; margin-bottom: 30px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+.search-container { background-color: white; border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
 .btn-gradient { background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); border: none; color: white; border-radius: 25px; }
 .badge-category { background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: white; padding: 5px 10px; border-radius: 20px; font-size: 12px; display: inline-block; margin: 0 5px 5px 0; }
 .chat-container { position: fixed; bottom: 20px; right: 80px; width: 350px; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 25px rgba(0,0,0,0.2); z-index: 1000; background-color: white; transition: all 0.3s ease-in-out; }
@@ -184,6 +203,7 @@ body { font-family: 'Poppins', sans-serif; background-color: #f8f9fa; }
 .chat-hidden { transform: translateY(calc(100% + 20px)); }
 .chat-toggle { position: fixed; bottom: 20px; right: 20px; background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); color: white; width: 60px; height: 60px; border-radius: 30px; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.2); z-index: 1001; }
 .event-image-placeholder { width: 100%; height: 180px; background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); display: flex; justify-content: center; align-items: center; color: #999; font-size: 12px; }
+.form-control { height: 34px; }
 "
 
 header_title <- "CampusConnect"
@@ -223,8 +243,9 @@ version_a_ui <- function() {
 }
 
 # VERSION B UI: Modern / fancy interface + with AI chatbot using Google's Gemini Flash 1.5
-popular_categories <- c("Computer Science", "Finance", "Dance", "Politics")
 chatbot_intro <- "Hi there! I'm EventGuide, a personal assistant for finding events at Columbia, powered by Google's Gemini 1.5 Flash LLM. What kinds of events interest you? Feel free to ask me anything in natural language."
+chatbot_sys_prompt <- "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. Keep responses concise (2-3 sentences) and focus on helping users find events. "
+popular_categories <- c("Computer Science", "Finance", "Dance", "Politics")
 
 version_b_ui <- function() {
   fluidPage(
@@ -249,14 +270,12 @@ version_b_ui <- function() {
           column(5, div(style = "font-weight: 600", "When are you free?"), dateRangeInput("date_range", NULL, start = date_range_default[1], end = date_range_default[2])),
           column(4, div(style = "font-weight: 600", "Looking for something specific?"), textInput("search_text", NULL, placeholder = "Search events..."))
         )),
-        div(style = "margin-bottom: 30px;",
-            h4("Popular Categories", style = "margin-bottom: 15px;"),
-            div(
-              lapply(popular_categories, function(category) {
-                actionLink(paste0("filter_", tolower(gsub(" ", "_", category))), 
-                           div(class = "badge-category", category))
-              })
-            )
+        div(h4("Popular Categories"),
+            div(lapply(popular_categories, function(category) {
+              actionLink(paste0("filter_", tolower(gsub(" ", "_", category))), 
+                          div(class = "badge-category", category))
+            })
+          )
         ),
         h3("What's Happening On Campus", style = "font-weight: 600;"),
         div(id = "events_container", uiOutput("event_grid")),
@@ -305,7 +324,11 @@ ui <- function(request) {
 }
 
 server <- function(input, output, session) {
-  
+  # Wait for GA to be initialized
+  while (Sys.getenv("GA_TRACKING_ID", "") == "") {
+    Sys.sleep(0.5)
+  }
+
   # Version assignment
   version <- reactive({
     v <- determine_version(session)
@@ -342,8 +365,8 @@ server <- function(input, output, session) {
   })
   
   # Track filter usage
-  observeEvent(input$category_filter, { track_event("Filter", "Category", paste(input$category_filter, collapse=", ")) })
-  observeEvent(input$date_range, { track_event("Filter", "DateRange", paste(input$date_range[1], "to", input$date_range[2])) })
+  observeEvent(input$category_filter, { track_event("Filter", "CategoryFilter", paste(input$category_filter, collapse=", ")) })
+  observeEvent(input$date_range, { track_event("Filter", "DateRangeFilter", paste(input$date_range[1], "to", input$date_range[2])) })
   observeEvent(input$search_text, { if (!is.null(input$search_text) && input$search_text != "") track_event("Filter", "Search", input$search_text) })
   
   # Quick filters (Version B) - dynamically create observers for each category
@@ -358,7 +381,7 @@ server <- function(input, output, session) {
         current <- c(category)
       }
       updateSelectizeInput(session, "category_filter", selected = current)
-      track_event("QuickFilter", "Category", category)
+      track_event("QuickFilter", "CategoryFilter", category)
     })
   })
   
@@ -578,9 +601,7 @@ server <- function(input, output, session) {
         head(10)
     }
     
-    context <- paste0(
-      "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
-      "Keep responses concise (2-3 sentences) and focus on helping users find events. ",
+    context <- paste0(chatbot_sys_prompt,
       "Here are some events that might be relevant to the user's query:\n\n",
       format_events_to_string(relevant_events),
       "\nUser question: ", user_msg
@@ -645,13 +666,12 @@ server <- function(input, output, session) {
       }
       
       # Context for recommendation based on calendar
-      context <- paste0(
-        "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
+      context <- paste0(chatbot_sys_prompt,
         "The user has these events in their calendar: \n\n",
         format_events_to_string(calendar_events),
         "\n\nBased on their interests, recommend these similar events: \n\n",
         format_events_to_string(suggested_events),
-        "\nExplain why these recommendations match their interests. Keep your response concise (3-4 sentences) and enthusiastic."
+        "\nExplain why these recommendations match their interests. Keep your response concise (2-3 sentences) and enthusiastic."
       )
     } else {
       # If calendar is empty, recommend random upcoming events
@@ -661,8 +681,7 @@ server <- function(input, output, session) {
         head(5)
       
       # Context for recommendation with empty calendar
-      context <- paste0(
-        "You are EventGuide, a helpful assistant for the CampusConnect app at Columbia University. ",
+      context <- paste0(chatbot_sys_prompt,
         "The user doesn't have any events in their calendar yet. Here are some events you can recommend: \n\n",
         format_events_to_string(suggested_events),
         "\nKeep your response concise (2-3 sentences) and enthusiastic, encouraging them to explore these events."
