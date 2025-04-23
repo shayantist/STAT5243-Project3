@@ -1,0 +1,13 @@
+# ----------------------------------------,,,,,
+# shiny app,,,,,
+# Assigned Group-B-Event Counts,,,,,
+# 20250420-20250422,,,,,
+# ----------------------------------------,,,,,
+Event name,User engagement,Event count,Total user,Average session duration,
+,93,465,70,149.9184769,Grand total
+session_start,69,69,69,0,
+page_view,69,77,69,294.8302128965517,
+calendar_adds,51,139,47,80.10416666666667,
+My_calendar,46,87,38,60.17105263157895,
+View_details,37,56,29,136.00460014285713,
+Category,26,37,18,62.005984142857145,
