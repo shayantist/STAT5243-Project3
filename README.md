@@ -100,3 +100,34 @@ This application implements best practices for A/B testing:
 2. **Isolation of Variables**: The only differences between versions are UI and the presence of the chatbot
 3. **Consistent Metrics**: Both versions track the same core conversion and engagement metrics
 4. **Minimized Cross-Contamination**: Users consistently see the same version on return visits
+
+## A/B Test Results Summary
+We conducted statistical analysis to evaluate whether Version B's redesigned interface and LLM chatbot led to measurable improvements in user engagement.
+
+1. **Conversion Rate**  
+- Group A: 92 adds / 380 events = **24.2%**  
+- Group B: 139 adds / 465 events = **29.9%**  
+- Z-test result: *p = 0.0652*  
+→ Version B showed a **5.7% absolute** and **23.6% relative** increase in conversion, though the difference was not statistically significant at the 5% level.
+
+2. **Average Session Duration**  
+- Group A: **217.88 seconds**  
+- Group B: **294.83 seconds**  
+- T-test result: *p < 0.000001*  
+→ Version B users spent **+77 seconds** more per session (**+35.3%**), a statistically significant improvement supporting the effectiveness of UI and chatbot enhancements.
+
+
+## Interpretation & Conclusion
+These results indicate that Version B's interface successfully improved user engagement. While the increase in conversion rate was suggestive but not conclusive, the **significant improvement in session duration** suggests that users found the enhanced interface more engaging. The combination of better visuals and a conversational assistant likely contributed to this effect.
+
+To better understand the role of the AI assistant, future work should include more granular event logging (e.g., number of chatbot messages sent), user feedback collection, and factorial testing to isolate UI and AI components.
+
+
+
+## Challenges & Limitations
+- **No cookie-based persistence**: users might be reassigned between visits
+- **AI interactions not separately tracked**: reduced insight into the assistant’s actual impact
+- **Short test duration (12 hours)**: may limit generalizability
+- **Participants mostly students**: non-representative sample
+- **No user satisfaction data**: interaction logs cannot capture subjective perceptions
+
