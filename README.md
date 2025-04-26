@@ -32,7 +32,6 @@ To test user engagement between the two versions, as suggested in the assignment
 The application tracks several key metrics to compare the effectiveness of each interface:
 1. **Engagement Metrics**
    - Click-through rates on events
-   - Filter usage frequency
    - Time spent browsing
    - Chatbot interactions (specifically for Version B)
 2. **Conversion Metrics**
@@ -43,6 +42,15 @@ The application tracks several key metrics to compare the effectiveness of each 
    - Session duration
    - Return rate
    - Bounce rate
+
+## File Structure
+- `[app.R](./app.R)`: Main Shiny application with both UI versions and A/B testing logic
+- `[event_data.R](./event_data.R)`: Contains dummy campus event data used by the application (generated using Claude Sonnet 3.7)
+- `[google-analytics.html](./google-analytics.html)`: Google Analytics tracking code integration
+- `[manifest.json](./manifest.json)`: Configuration file for shinyapps.io deployment
+- `[analysis/](./analysis/)`: Directory containing statistical analysis code and data
+   - `[statistical_analysis.R](./statistical_analysis.R)`: R script for analyzing experimental results
+   - `[groupA.csv](./groupA.csv)` & `[groupB.csv](./groupB.csv)`: Collected experimental data from each group
 
 ## Installation and Setup
 
@@ -60,24 +68,25 @@ The application tracks several key metrics to compare the effectiveness of each 
 
 ### Configuration
 1. Clone this repository:
-2. Configure environment variables:
+   ```bash
+   git clone https://github.com/shayantist/STAT5243-Project3.git
+   cd STAT5243-Project3
+   ```
+2. Install the required packages:
+   ```r
+   install.packages(c("shiny", "dplyr", "stringr", "shinythemes", "shinyjs", "httr", "jsonlite", "dotenv"))
+   ```
+3. Configure environment variables:
    - Create a `.env` file in the root directory and add your Google Analytics tracking ID and Gemini API key from Google AI Studio (it's free!!):
    ```r
    GA_TRACKING_ID=G-XXXXXXXX
    GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE
    ```
-
-### Running the Application
-
-1. Open the project in RStudio and run:
+4. Run the application:
    ```r
    shiny::runApp("app.R")
    ```
-2. Or run from the command line:
-   ```
-   Rscript -e "shiny::runApp('app.R')"
-   ```
-3. Access the application in your web browser at `http://localhost:xxxx` (where xxxx is the port number shown in the console)
+5. Access the application in your web browser at `http://localhost:xxxx` (where xxxx is the port number shown in the console)
 
 ### A/B Testing Configuration
 By default, users are randomly assigned to either Version A or Version B. To force a specific version for testing, use URL parameters:
