@@ -146,18 +146,62 @@ track_event <- function(category, action, label = NULL, value = NULL) {
   # Use shinyjs to run the JavaScript command in the browser
   tryCatch({
     shinyjs::runjs(js_command)
-    print(paste("GA4 Event Triggered:", event_name, "| Params:", params_json))
+    # print(paste("GA4 Event Triggered:", event_name, "| Params:", params_json))
   }, error = function(e) {
     warning(paste("Failed to trigger GA4 event via shinyjs:", e$message))
   })
 }
 
-# Determine version (A or B) based on user ID or URL parameter
-determine_version <- function(session) {
-  query <- parseQueryString(session$clientData$url_search)
-  if (!is.null(query$version) && query$version %in% c("A", "B")) return(query$version)
-  if (!is.null(query$group) && query$group %in% c("A", "B")) return(query$group)
-  sample(c("A", "B"), 1)  # Random assignment if no valid parameter
+#==============================================================================
+# A/B TESTING FUNCTIONS
+#==============================================================================
+# These variables store session-level metrics
+session_metrics <- reactiveValues(
+  start_time = NULL,
+  version = NULL,
+  user_id = NULL,
+  event_clicks = 0,
+  calendar_adds = 0,
+  AI_chat_messages_sent = 0,
+  AI_suggestions_requested = 0
+)
+
+# Improved tracking function with better data structure
+track_experiment <- function(category, action, label = NULL, value = NULL) {
+  # First, track the event in GA
+  track_event(category, action, label, value)
+  
+  print(paste("Time:", Sys.time(), "User ID:", session_metrics$user_id, "Version:", session_metrics$version, "Category:", category, "Action:", action, "Label:", label, "Value:", value))
+
+  # Then, log the event to our own database or file
+  log_data <- data.frame(
+    timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    user_id = session_metrics$user_id,
+    version = session_metrics$version,
+    category = category,
+    action = action,
+    label = ifelse(is.null(label), NA, label),
+    value = ifelse(is.null(value), NA, value),
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to CSV file - ensure the directory exists
+  if(!dir.exists("experiment_data")) {
+    dir.create("experiment_data")
+  }
+  
+  # Append data to CSV
+  write.table(
+    log_data, 
+    file = "experiment_data/ab_test_logs.csv", 
+    append = TRUE, 
+    sep = ",", 
+    row.names = FALSE,
+    col.names = !file.exists("experiment_data/ab_test_logs.csv")
+  )
+  
+  # Return the event data in case it's needed
+  invisible(log_data)
 }
 
 #==============================================================================
@@ -207,7 +251,7 @@ body { font-family: 'Poppins', sans-serif; background-color: #f8f9fa; } h1, h4 {
 "
 
 header_title <- "👑 CampusConnect"
-header_subtitle <- "Discover events on campus at Columbia! (NOTE: All fictional—for now!)"
+header_subtitle <- "Discover events on campus at Columbia! NOTE: All events are fictional—for now."
 header_authors <- "Project 3 by Team 11: Shayan Chowdhury (sc4040), Ran Yan (ry2487), Zijun Fu (zf2342), and Tiantian Li (tl3404)"
 footer_text <- "© 2025 CampusConnect | STAT 5243: Team 11 (Spring 2025)"
 date_range_default <- c(Sys.Date() - 30, Sys.Date() + 60)
@@ -237,7 +281,7 @@ version_a_ui <- function() {
         )),
         h3("Upcoming Events", class = "mb-4"),
         fluidRow(id = "events_container", uiOutput("event_grid")),
-        div(style = "margin-top: 30px; padding: 20px 0; background-color: #f5f5f5; text-align: center;", p(footer_text))
+        div(style = "margin-top: 30px; padding: 20px 0; background-color: #f5f5f5; text-align: center;", p(footer_text), a(href = "https://github.com/shayantist/STAT5243-Project3", "Source Code on GitHub"))
     )
   )
 }
@@ -329,10 +373,28 @@ server <- function(input, output, session) {
     Sys.sleep(0.5)
   }
 
+  # Initialize session metrics
+  # Function to generate a unique user ID
+  generate_user_id <- function() {
+    paste0("user_", format(Sys.time(), "%Y%m%d%H%M%S"), "_", sample(1000:9999, 1))
+  }
+  observe({
+    session_metrics$start_time <- Sys.time()
+    session_metrics$user_id <- generate_user_id()
+  })
+
   # Version assignment
+  # Determine version (A or B) based on user ID or URL parameter
+  determine_version <- function(session) {
+    query <- parseQueryString(session$clientData$url_search)
+    if (!is.null(query$version) && query$version %in% c("A", "B")) return(query$version)
+    if (!is.null(query$group) && query$group %in% c("A", "B")) return(query$group)
+    sample(c("A", "B"), 1)  # Random assignment if no valid parameter
+  }
   version <- reactive({
     v <- determine_version(session)
-    track_event("Experiment", "VersionAssignment", v)
+    session_metrics$version <- v
+    track_experiment("Experiment", "VersionAssignment", v)
     return(v)
   })
   
@@ -409,6 +471,7 @@ server <- function(input, output, session) {
           div(class = "event-detail", icon("map-marker-alt"), " ", event$location),
           div(class = "event-description", str_trunc(event$description, 120)),
           div(style = "margin-top: 15px;",
+            # TODO: fix the onclick to be a function since this prevents multiple clicks
             actionButton(paste0("view_details_", event$id), "View Details", class = "btn-sm btn-primary", 
                          onclick = paste0("Shiny.setInputValue('event_details', ", event$id, ");")),
             actionButton(paste0("add_calendar_", event$id), "Add to Calendar", class = "btn-sm btn-outline-primary ml-2", 
@@ -450,14 +513,23 @@ server <- function(input, output, session) {
     return(do.call(tagList, event_rows))
   })
   
-  # Event details modal
+
+  #==============================================================================
+  # ACTIONS & TRACKING
+  #==============================================================================
+
+  # Check Event Details Modal (TRACKED)
   observeEvent(input$event_details, {
     req(input$event_details)
     event_id <- input$event_details
     event <- event_data[event_data$id == event_id, ]
     
     if (nrow(event) == 1) {
-      track_event("Interaction", "ViewEventDetails", event$title)
+      # Increment the click counter
+      session_metrics$event_clicks <- session_metrics$event_clicks + 1
+
+      # Track the event with detailed information
+      track_experiment("Interaction", "ViewEventDetails", event$title, session_metrics$event_clicks)
       
       showModal(modalDialog(
         title = event$title,
@@ -482,7 +554,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # Add to calendar action
+  # Add to Calendar (TRACKED)
   observeEvent(input$add_to_calendar, {
     req(input$add_to_calendar)
     event_id <- input$add_to_calendar
@@ -491,7 +563,10 @@ server <- function(input, output, session) {
     if (nrow(event) == 1) {
       result <- add_event_to_calendar(event_id, event_data)
       if (result) {
-        track_event("Conversion", "AddToCalendar", event$title, 1)
+        # Increment the conversion counter
+        session_metrics$calendar_adds <- session_metrics$calendar_adds + 1
+        # Track the event as a conversion with value
+        track_experiment("Conversion", "AddToCalendar", event$title, session_metrics$calendar_adds)
         showNotification(paste("Added to calendar:", event$title), type = "message", duration = 5)
       } else {
         showNotification("This event is already in your calendar", type = "warning", duration = 3)
@@ -500,10 +575,9 @@ server <- function(input, output, session) {
     }
   })
   
-  # View calendar action
+  # View Calendar (NOT-TRACKED)
   observeEvent(input$view_calendar, {
-    track_event("Interaction", "ViewCalendar")
-    
+    # track_event("Interaction", "ViewCalendar")
     if (nrow(user_calendar$events) == 0) {
       calendar_content <- div(
         style = "text-align: center; padding: 20px;",
@@ -544,7 +618,7 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Remove from calendar action
+  # Remove from Calendar (NOT-TRACKED)
   observeEvent(input$remove_from_calendar, {
     req(input$remove_from_calendar)
     event_id <- input$remove_from_calendar
@@ -553,7 +627,7 @@ server <- function(input, output, session) {
       event_to_remove <- user_calendar$events[user_calendar$events$id == event_id, ]
       if (nrow(event_to_remove) > 0) {
         user_calendar$events <- user_calendar$events[user_calendar$events$id != event_id, ]
-        track_event("Interaction", "RemoveFromCalendar", event_to_remove$title)
+        # track_event("Interaction", "RemoveFromCalendar", event_to_remove$title)
         showNotification(paste("Removed from calendar:", event_to_remove$title), type = "default", duration = 3)
         
         # Refresh the calendar modal
@@ -567,13 +641,19 @@ server <- function(input, output, session) {
     }
   })
   
-  # Chatbot functionality (Version B)
+  # Chatbot Send Message (Version B, TRACKED)
   chat_history <- reactiveValues(messages = character(0))
-  
   observeEvent(input$send_message, {
     req(input$chat_input, version() == "B")
     user_msg <- input$chat_input
-    track_event("Interaction", "ChatMessage", substr(user_msg, 1, 50))
+
+    # Increment chat messages counter
+    session_metrics$chat_messages_sent <- session_metrics$chat_messages_sent + 1
+    
+    # Track chat interaction with message count and truncated content
+    track_experiment("Interaction", "ChatMessage", 
+                    substr(user_msg, 1, 50), 
+                    session_metrics$chat_messages_sent)
     
     chat_history$messages <- c(chat_history$messages, paste0("You: ", user_msg))
     
@@ -638,11 +718,18 @@ server <- function(input, output, session) {
     }
   })
   
-  # AI suggestions button (Version B)
+  # AI Suggestions Button (Version B, TRACKED)
   observeEvent(input$suggest_event, {
     req(version() == "B")
-    track_event("Interaction", "RequestSuggestions")
+
+    # Increment suggestions counter
+    session_metrics$suggestions_requested <- session_metrics$suggestions_requested + 1
     
+    # Track the suggestion request with count
+    track_experiment("Interaction", "RequestSuggestions", 
+                    "AIRecommendation", 
+                    session_metrics$suggestions_requested)
+
     # Get user's calendar events
     calendar_events <- user_calendar$events
     
@@ -697,15 +784,42 @@ server <- function(input, output, session) {
     runjs("$('#chat_container').removeClass('chat-hidden'); $('#chat_toggle').addClass('d-none');")
   })
   
-  # Track chat interactions
-  observeEvent(input$chat_opened, { track_event("Interaction", "ChatOpened") })
-  observeEvent(input$chat_minimized, { track_event("Interaction", "ChatMinimized") })
-  
-  # Session duration tracking
-  session_start <- Sys.time()
+  # Session Duration (TRACKED)
   onSessionEnded(function() {
-    session_duration <- as.numeric(difftime(Sys.time(), session_start, units = "secs"))
-    track_event("Engagement", "SessionDuration", value = round(session_duration))
+    # Use isolate to access reactive values outside of reactive context
+    isolate({
+      session_duration <- as.numeric(difftime(Sys.time(), session_metrics$start_time, units = "secs"))
+      
+      # Track session end with more complete metrics
+      track_experiment("Engagement", "SessionEnd", session_metrics$user_id, round(session_duration))
+      
+      # Log the full session summary
+      summary_data <- data.frame(
+        timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        version = session_metrics$version,
+        user_id = session_metrics$user_id,
+        session_duration = session_duration,
+        event_clicks = session_metrics$event_clicks,
+        calendar_adds = session_metrics$calendar_adds,
+        AI_chat_messages_sent = session_metrics$AI_chat_messages_sent,
+        AI_suggestions_requested = session_metrics$AI_suggestions_requested,
+        stringsAsFactors = FALSE
+      )
+      
+      # Save the summary data
+      if(!dir.exists("experiment_data")) {
+        dir.create("experiment_data")
+      }
+      
+      write.table(
+        summary_data, 
+        file = "experiment_data/session_summaries.csv", 
+        append = TRUE, 
+        sep = ",", 
+        row.names = FALSE,
+        col.names = !file.exists("experiment_data/session_summaries.csv")
+      )
+    })
   })  
 }
 
